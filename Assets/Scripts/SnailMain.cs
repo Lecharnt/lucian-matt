@@ -1,3 +1,5 @@
+using Mono.Cecil.Cil;
+using System.Collections;
 using System.Runtime.CompilerServices;
 using Unity.VisualScripting;
 using UnityEditor.Tilemaps;
@@ -20,6 +22,7 @@ public class SnailMainScript : MonoBehaviour
     private InputActionMap actionMap;
     private InputAction Move;
     private InputAction Jump;
+    private InputAction DashI;
     public Rigidbody2D snailRigid;
 
     private Vector2 currentVelocity;
@@ -29,6 +32,18 @@ public class SnailMainScript : MonoBehaviour
     private GameManager gameManager;
 
     public bool isGrounded;
+    private int howManyJumpsLeft;
+
+
+    //dashing
+    private bool canDash = true;
+    private bool isDashing;
+    public float dashingPower;
+    public float dashingTime;
+    public float dashingCooldown;
+    [SerializeField] private TrailRenderer trailRenderer;
+    private int directionFacing;
+
 
    
 
@@ -43,6 +58,7 @@ public class SnailMainScript : MonoBehaviour
         actionMap = playerInput.currentActionMap;
         Move = actionMap.FindAction("Move");
         Jump = actionMap.FindAction("Jump");
+        DashI = actionMap.FindAction("Sprint");
           
         gameManager = GameManager.instance;
         
@@ -67,6 +83,11 @@ public class SnailMainScript : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+
+        if (isDashing)
+        {
+            return; //prevents player from doing stuff while dashing i think
+        }
         Vector2 input = Move.ReadValue<Vector2>();
         Vector2 targetVelocity = new Vector2(input.x * speed, snailRigid.linearVelocity.y);
 
@@ -86,22 +107,37 @@ public class SnailMainScript : MonoBehaviour
         //handle jump
         if (isGrounded && Jump.triggered)
         {
+            howManyJumpsLeft -= 1;
+            snailRigid.linearVelocity = new Vector2(snailRigid.linearVelocity.x, 0); //need to reset vel before jump again
             snailRigid.AddForce(new Vector2(0, jumpforce), ForceMode2D.Impulse);
+        }
+        if (!isGrounded && Jump.triggered && howManyJumpsLeft > 0)
+        {
+            howManyJumpsLeft -= 1;
+            snailRigid.linearVelocity = new Vector2(snailRigid.linearVelocity.x, 0);
+            snailRigid.AddForce(new Vector2(0, jumpforce), ForceMode2D.Impulse);
+        }
 
-            
-            
+        if (isGrounded)
+        {
+            howManyJumpsLeft = 1;
         }
 
         if (input.x > 0)
         {
+            directionFacing = 1;
             spriteRenderer.flipX = false;
         }
         else if (input.x < 0)
         {
+            directionFacing = 0;
             spriteRenderer.flipX = true;
         }
 
-
+        if (DashI.triggered && canDash)
+        {
+            StartCoroutine(Dash());
+        }
     }
 
 
@@ -142,6 +178,34 @@ public class SnailMainScript : MonoBehaviour
 
     }
     */
+
+    private IEnumerator Dash()
+    {
+        canDash = false;
+        isDashing = true;
+        float originalGravity = snailRigid.gravityScale; // Store the original gravity
+        snailRigid.gravityScale = 0f; // Disable gravity during dash
+
+        if (directionFacing == 0)
+        {
+            snailRigid.linearVelocity = new Vector2((transform.localScale.x * dashingPower * -1), 0f);
+        }
+        else
+        {
+            snailRigid.linearVelocity = new Vector2(transform.localScale.x * dashingPower, 0f);
+        }
+
+        trailRenderer.emitting = true;
+        yield return new WaitForSeconds(dashingTime);
+        trailRenderer.emitting = false;
+
+        snailRigid.gravityScale = originalGravity; // Reset gravity to original value
+        snailRigid.linearVelocity = new Vector2(snailRigid.linearVelocity.x, 0f);
+        isDashing = false;
+        yield return new WaitForSeconds(dashingCooldown);
+        canDash = true;
+    }
+
 }
 
 
