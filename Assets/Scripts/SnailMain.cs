@@ -1,15 +1,17 @@
-using Mono.Cecil.Cil;
+
 using System.Collections;
-using System.Runtime.CompilerServices;
-using Unity.VisualScripting;
-using UnityEditor.Tilemaps;
-using UnityEditorInternal;
+
+using Unity.Netcode;
+
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 
-public class SnailMainScript : MonoBehaviour
+public class SnailMainScript : NetworkBehaviour
 {
+
+    private NetworkVariable<bool> isFlipped = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
     public float jumpforce;
     public float gravityScale;
@@ -43,10 +45,23 @@ public class SnailMainScript : MonoBehaviour
     public float dashingCooldown;
     [SerializeField] private TrailRenderer trailRenderer;
     private int directionFacing;
-
-
-   
-
+    public override void OnNetworkSpawn()
+    {
+        isFlipped.OnValueChanged += OnFlipChanged;
+        spriteRenderer.flipX = isFlipped.Value;
+        if (!IsOwner)
+        {
+            return;
+        }
+    }
+    private void OnFlipChanged(bool oldValue, bool newValue)
+    {
+        spriteRenderer.flipX = newValue;
+    }
+        private void OnDestroy()
+    {
+        isFlipped.OnValueChanged -= OnFlipChanged;
+    }
     //public float groundCheckDistance;
     //LayerMask layerMask;
 
@@ -59,9 +74,8 @@ public class SnailMainScript : MonoBehaviour
         Move = actionMap.FindAction("Move");
         Jump = actionMap.FindAction("Jump");
         DashI = actionMap.FindAction("Sprint");
-          
+
         gameManager = GameManager.instance;
-        
 
         //layerMask = LayerMask.GetMask("Player");
 
@@ -83,7 +97,10 @@ public class SnailMainScript : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-
+        if (!IsOwner)
+        {
+            return;
+        }
         if (isDashing)
         {
             return; //prevents player from doing stuff while dashing i think
@@ -122,16 +139,17 @@ public class SnailMainScript : MonoBehaviour
         {
             howManyJumpsLeft = 1;
         }
+        float move = Input.GetAxisRaw("Horizontal");
 
-        if (input.x > 0)
-        {
-            directionFacing = 1;
-            spriteRenderer.flipX = false;
-        }
-        else if (input.x < 0)
+        if (move < 0 && !isFlipped.Value)
         {
             directionFacing = 0;
-            spriteRenderer.flipX = true;
+            isFlipped.Value = true;
+        }
+        else if (move > 0 && isFlipped.Value)
+        {
+            directionFacing = 1;
+            isFlipped.Value = false;
         }
 
         if (DashI.triggered && canDash)
